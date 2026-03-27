@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Users, Activity, Save, TrendingUp } from 'lucide-react';
+import { Users, Activity, Save, TrendingUp, Trophy } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 const METRICS = [
@@ -27,6 +27,8 @@ function App() {
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const [rankings, setRankings] = useState<{member: Member, score: number}[]>([]);
+
   const defaultScores = {
     teamwork: 7,
     attitude: 8,
@@ -40,6 +42,24 @@ function App() {
 
   const [scores, setScores] = useState<Record<string, number>>(defaultScores);
 
+  const fetchRankings = async (membersList: Member[]) => {
+    const { data: evals } = await supabase.from('evaluations').select('*').order('created_at', { ascending: false });
+    if (evals) {
+      const latestScores = new Map();
+      evals.forEach((e: any) => {
+        if (!latestScores.has(e.member_id)) {
+          const avg = (e.teamwork + e.attitude + e.autonomy + e.learning + e.dev_skill + e.req_analysis + e.dev_speed + e.goals) / 8;
+          latestScores.set(e.member_id, avg);
+        }
+      });
+      const ranks = membersList.map(m => ({
+        member: m,
+        score: latestScores.get(m.id) || 0
+      })).sort((a,b) => b.score - a.score);
+      setRankings(ranks);
+    }
+  };
+
   useEffect(() => {
     const fetchMembers = async () => {
       const { data, error } = await supabase.from('members').select('*').order('name');
@@ -48,6 +68,7 @@ function App() {
       } else if (data && data.length > 0) {
         setMembers(data);
         setActiveMemberId(data[0].id);
+        fetchRankings(data);
       }
     };
     fetchMembers();
@@ -140,6 +161,7 @@ function App() {
       if (error) throw error;
       alert('Evaluation saved successfully!');
       setNotes('');
+      fetchRankings(members);
     } catch (err: any) {
       console.error('Error saving evaluation:', err.message);
       alert('Failed to save evaluation.');
@@ -300,6 +322,36 @@ function App() {
             </div>
           </div>
 
+        </div>
+
+        {/* Right Sidebar: Ranking Board */}
+        <div className="glass-panel member-list">
+          <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
+            <h3 style={{ color: 'var(--text-muted)' }}>Leaderboard</h3>
+            <Trophy size={20} color="var(--accent-color)" />
+          </div>
+          {rankings.map((rank, index) => (
+            <div 
+              key={rank.member.id} 
+              className={`member-item ${activeMemberId === rank.member.id ? 'active' : ''}`}
+              onClick={() => setActiveMemberId(rank.member.id)}
+            >
+              <div className="avatar" style={{ 
+                background: index === 0 ? 'linear-gradient(45deg, #fbbf24, #d97706)' : 
+                            index === 1 ? 'linear-gradient(45deg, #9ca3af, #4b5563)' : 
+                            index === 2 ? 'linear-gradient(45deg, #d97706, #92400e)' : undefined 
+              }}>
+                {index + 1}
+              </div>
+              <div className="member-info flex justify-between items-center" style={{ width: '100%' }}>
+                <div>
+                  <h4>{rank.member.name}</h4>
+                  <p>{rank.score > 0 ? `${rank.score.toFixed(1)} avg` : 'No data'}</p>
+                </div>
+                {index === 0 && <Trophy size={16} color="#fbbf24" />}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
